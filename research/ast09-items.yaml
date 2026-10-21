@@ -1,0 +1,163 @@
+# AST09 — No Governance: Offensive Checklist (inverted attack tests)
+# Each item mirrors one defensive AST09/checklist 9.x check into an attacker-observable test.
+# Gate: INCLUDE if B>=4 AND avg(A,D,E)>=3.5 AND C>=3; REFERENCE if D<=2 (generic/duplicated); else DISCARD.
+# Scope: researcher-owned Docker/local labs only. No production, no third-party systems.
+domain: "agentic-skills-top10/ast09-no-governance"
+source_urls:
+  - "https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/ast09.md"
+  - "https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/index.md"
+  - "https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/checklist.md"
+items:
+  - id: "AS09T01"
+    title: "Install ghost skill with zero inventory footprint"
+    objective: "Prove that a developer-installed skill leaves no record in any enterprise inventory or CMDB, so the SOC cannot see the executable behavior layer at all."
+    target_env: "all"
+    procedure:
+      - "Run a local OpenClaw instance in Docker (lab host only) with default configuration; snapshot the baseline state of the skill directory and any registry/asset export."
+      - "Execute the single-line install documented by AST09 (openclaw skill install <name>) against a locally authored lab skill, with no approval workflow configured."
+      - "Query every surface an inventory would use: skill directory listing, openclaw skill list output, registry manifest, CMDB export, and any IAM linkage."
+      - "Diff against baseline: skill files exist and execute, but no inventory entry carrying name, version, hash, install date, installer identity, or last-scan status was created anywhere."
+      - "Trigger the skill to act (touch a canary file, run a shell command) and re-run the inventory queries to confirm execution with zero asset record."
+      - "Run NVIDIA SkillSpector over the workspace to show the only record of the skill is ad-hoc scanner output, not a governance-driven inventory entry."
+    tools: ["Docker", "OpenClaw (local lab instance)", "openclaw CLI", "NVIDIA/SkillSpector", "jq", "shasum"]
+    evidence: "Post-install: SKILL.md present and executable, openclaw skill list shows the skill, but every inventory/CMDB query returns zero rows; no installer identity, no hash, no scan status; skill side effects observed with no corresponding asset record."
+    impact: "persistencia"
+    severity_hint: "Medium"
+    refs:
+      - "AST09 mitigation 1 (centralized inventory: name, version, hash, install date, installer identity, last scan status)"
+      - "AST09 'Why It's Unique to Skills' (one-line install, no enterprise logging hook, no CMDB entry)"
+      - "ast09.md real-world evidence: Bitdefender Feb 2026 (employees deploying with no security review, no SOC visibility; 53,000 exposed instances correlated with prior breach activity)"
+      - "ast09.md real-world evidence: Cisco State of AI Security 2026 (34% of enterprises have AI-specific security controls)"
+      - "checklist.md 9.1"
+    verdict: "INCLUDE"
+    utility_scores: {"A": 4, "B": 5, "C": 4, "D": 3, "E": 4}
+    rationale: "Skill-inventory absence is unique to the skill layer because SAM tooling has no concept of agent skills (AST09, index.md SAMM mapping); fully reproducible in one container; grounded in Bitdefender and Cisco telemetry, not theory."
+    collateral: "None beyond a researcher-owned Docker container on a lab host; dummy skill content and canary files only; no network egress to unaffiliated third parties; no real credentials or production systems involved."
+
+  - id: "AS09T02"
+    title: "Silently install skill bypassing approval gate"
+    objective: "Show that a skill installation completes with no approval decision, no pre-mutation receipt, and no consent event, so unverified code reaches execution with zero human-in-loop."
+    target_env: "all"
+    procedure:
+      - "In a lab OpenClaw container, point the installer at a locally authored skill (attacker-controlled payload, lab-only marker string)."
+      - "Run the install as an unprivileged lab user and capture installer stdout, exit code, and elapsed time; note that no approver prompt, no ALLOW/DENY/ESCALATE decision, and no plan is emitted."
+      - "Query all log stores for the admission-receipt fields required by AST09 (attempt_id, agent_id, action_type, scope, policy_version, decision, timestamp_ms); expect empty results."
+      - "Reproduce the consent-gap pattern on your own repository only: drop an agent config/hook that executes at project open, confirming execution occurs before any trust dialog (mirrors CVE-2025-59536 behavior)."
+      - "Measure install-to-execution latency and record that no approval workflow, ticket, or ITSM record was created at any point."
+    tools: ["Docker", "OpenClaw (local lab instance)", "git (local repo)", "openclaw CLI", "jq", "strace"]
+    evidence: "Installer emits only a success line; log-store queries for receipt fields return nothing; the attacker-authored instruction executes with no ALLOW/DENY/ESCALATE record, no approver identity, and no policy_version binding."
+    impact: "persistencia"
+    severity_hint: "Medium"
+    refs:
+      - "AST09 mitigation 2 (approval workflow for all skill installations)"
+      - "ast09.md Execution Receipts / Bilateral Receipt Pattern (decision ALLOW/DENY/ESCALATE, policy_version bound at decision time)"
+      - "checklist.md 2.7 and B1 (pre-mutation receipt before installer writes)"
+      - "checklist.md 9.3 (approval record with approver identity and date)"
+      - "index.md incident timeline Feb 2026: Check Point CVE-2025-59536 (repo-controlled config executes before any user consent dialog)"
+      - "ast09.md: one-line install with no enterprise logging hook"
+    verdict: "INCLUDE"
+    utility_scores: {"A": 4, "B": 5, "C": 4, "D": 3, "E": 4}
+    rationale: "The missing approval/pre-mutation gate is tested at the skill installer boundary, which is the agent-specific control point defined by AST09 and checklist 2.7/B1; distinct from AST02 because the object under test is the absent governance gate, not a poisoned package."
+    collateral: "Researcher-owned container and repository only; payload is a harmless marker string; no real users prompted; no production identity, approval, or ITSM systems contacted."
+
+  - id: "AS09T03"
+    title: "Act via agent with empty audit trail"
+    objective: "Demonstrate that a skill action completes with zero audit records, leaving the attacker action untraceable post-hoc, and that agent-side logs are editable and self-read (poisonable) rather than tamper-evident."
+    target_env: "all"
+    procedure:
+      - "Start a lab OpenClaw container with default logging only and no audit configuration (matching an ungoverned deployment)."
+      - "Invoke a lab skill that reads a canary file and makes an outbound connection to a local listener you control."
+      - "Search every log sink (agent log directory, container stdout, filesystem audit via osquery/fs_usage, network capture via tcpdump) for the fields checklist 9.4 requires: skill ID, user context, tools called, files accessed, network connections, outputs."
+      - "Show the search returns zero events tying agent identity to action and scope; no admission or outcome receipt pair exists."
+      - "Demonstrate the inverse risk: write attacker-chosen text into the agent log file the way the 2026.2.13 log-poisoning flaw allowed (WebSocket-writable logs the agent later reads) and show no integrity control detects the edit."
+      - "Attempt to recompute a bilateral receipt (admission plus outcome, joined by attempt_id) from ambient logs and show it cannot be produced."
+    tools: ["Docker", "OpenClaw (local lab instance)", "osquery/fs_usage", "tcpdump", "netcat listener", "jq"]
+    evidence: "Post-action search of all log sinks returns no record of skill ID, user context, tools called, files, network, or outputs; the agent log file accepts attacker writes and is later read by the agent as trusted content; no tamper-evident receipt exists."
+    impact: "evasion"
+    severity_hint: "Medium"
+    refs:
+      - "AST09 mitigation 4 (comprehensive audit logging for all skill actions: file access, network calls, shell commands, memory writes)"
+      - "ast09.md Execution Receipts section and EU AI Act Article 12 note (logs an operator controls can be edited after the fact)"
+      - "checklist.md 9.4"
+      - "ast09.md real-world evidence: Meta researcher Summer Yue incident (agent deleted large volumes of email; no governance mechanism to prevent or detect)"
+      - "index.md incident timeline Feb 14 2026: log-poisoning patch (version 2026.2.13), WebSocket writes to agent log files read back by the agent"
+    verdict: "REFERENCE"
+    utility_scores: {"A": 3, "B": 5, "C": 3, "D": 2, "E": 3}
+    rationale: "Marked REFERENCE per dedup rule: audit-log absence and tamper-evident receipts are generic observability/governance controls shared with OWASP API Top 10 and the NIST AI RMF / ISO 42001 mappings AST09 itself cites; the agent-specific kernel (self-read log poisoning) is already handled under AST01/AST04 cross-references."
+    collateral: "Local-only listener and canary files inside the researcher-owned container; no third-party network destinations; no real user data ingested."
+
+  - id: "AS09T04"
+    title: "Persist through unmanaged SOUL and MEMORY artifacts"
+    objective: "Prove that agent identity files with no version control form a persistent, unmonitored instruction store: appended content survives sessions and skill removal, and no diff, owner, or CI check ever surfaces it."
+    target_env: "all"
+    procedure:
+      - "Start a lab OpenClaw container where the workspace is not a git repository; show git status (or absence of any repo) for SOUL.md and MEMORY.md, evidencing unmanaged identity artifacts."
+      - "Have a lab skill or injected session append a harmless marker instruction to MEMORY.md and SOUL.md."
+      - "Restart the agent and open a fresh session; cat both files and observe agent behavior consistent with the injected marker, proving session-persistent loading."
+      - "Enumerate write access: show the default OpenClaw permission model grants full file write and that no permissions.deny_write protection for SOUL.md/MEMORY.md/AGENTS.md exists in the local manifest (contrast with the Universal Skill Format default deny)."
+      - "Check change history and detection: no VCS log, no inventory entry, no scan triggered by the write; record file mtime plus content hash before and after."
+      - "Delete the skill that performed the write and confirm the identity-artifact payload remains active."
+    tools: ["Docker", "OpenClaw (local lab instance)", "git", "jq", "shasum", "NVIDIA/SkillSpector"]
+    evidence: "Marker text persists across restart and across skill deletion; no VCS history exists for the identity files; the file write produced no inventory record and no scan event; agent output confirms the injected instruction is honored."
+    impact: "persistencia"
+    severity_hint: "High"
+    refs:
+      - "index.md incident timeline Jan 2026: ClawHavoc skills write malicious instructions directly into MEMORY.md and SOUL.md for session-persistent backdooring"
+      - "index.md Feb 2026: Hudson Rock Vidar infostealer variants specifically targeting OpenClaw identity files (openclaw.json, device.json, soul.md, memory.md)"
+      - "index.md Universal Skill Format: permissions.deny_write protects SOUL.md, MEMORY.md, AGENTS.md by default"
+      - "checklist.md 1.6 and 3.6 (identity file writes require elevated review)"
+      - "checklist.md AST03 note: OpenClaw default grants full shell, file, network, and cron access"
+    verdict: "INCLUDE"
+    utility_scores: {"A": 5, "B": 5, "C": 5, "D": 3, "E": 4}
+    rationale: "Identity-artifact persistence is unique to the skill layer with no SAM/ITSM analogue, has direct real-world evidence (ClawHavoc writes into MEMORY.md/SOUL.md; Hudson Rock targets the same files), and is trivially reproducible in one container."
+    collateral: "Researcher-owned container with disposable identity files containing only a marker string; no real persona data, credentials, or external services involved."
+
+  - id: "AS09T05"
+    title: "Reactivate orphaned skill and its credentials"
+    objective: "Demonstrate that when a developer leaves, their installed skill plus its stored agent credentials remain active, with no deprovisioning link to identity lifecycle and no revocation record, letting an attacker act under the departed identity."
+    target_env: "all"
+    procedure:
+      - "Lab container: install a skill as identity dev-a and store a lab credential in the agent config (openclaw.json/device.json style files with dummy tokens)."
+      - "Simulate offboarding: remove the dev-a login (userdel/ssh disable) while deliberately leaving the skill files and stored token untouched."
+      - "Re-enter as the attacker (local shell or script) and invoke the orphaned skill; show it still executes using the departed identity and its stored credentials."
+      - "Query the revocation/deprovisioning registry and IR playbook asset list: show no revocation event, no lifecycle linkage, and stale or absent scan status for the skill."
+      - "Run NVIDIA/SkillSpector and record that no re-scan or re-review was triggered by the identity change, and that inventory never aged the entry out."
+    tools: ["Docker", "OpenClaw (local lab instance)", "jq", "NVIDIA/SkillSpector", "Gitleaks/TruffleHog (config dir)", "userdel/ssh"]
+    evidence: "Skill executes after offboarding under the departed identity; the stored agent token is still accepted; no revocation record, no lifecycle linkage, and no fresh scan; inventory either omits the skill entirely (AS09T01) or carries it with a stale scan status."
+    impact: "takeover"
+    severity_hint: "High"
+    refs:
+      - "ast09.md attack scenario 'Orphaned Skill' (developer leaves; skill remains active with their credentials; no deprovisioning process)"
+      - "AST09 mitigation 6 (revocation process tied to offboarding and incident response playbooks)"
+      - "checklist.md 9.6"
+      - "index.md Jul 2026: Air Security SkillJacking (deleted GitHub accounts; researchers took over the most popular skills.sh video-generation skill, 11,483 installs, by re-registering its deleted owner account)"
+      - "index.md Feb 2026: Hudson Rock identity-file theft (openclaw.json, device.json)"
+    verdict: "INCLUDE"
+    utility_scores: {"A": 5, "B": 4, "C": 4, "D": 3, "E": 4}
+    rationale: "Skill-plus-credential orphaning is a named AST09 attack scenario with in-the-wild confirmation via SkillJacking deleted-account takeover; reproducible by lifecycle simulation in one container; the test object is the missing skill-deprovisioning link, which is skill-specific."
+    collateral: "Fictional dev-a identity and dummy tokens inside a researcher-owned container; no real employee records, corporate IdP, or offboarding system contacted."
+
+  - id: "AS09T06"
+    title: "Reuse unrotated agent NHI for lateral movement"
+    objective: "Show that an agent non-human identity credential that is long-lived, unrotated, and unregistered in IAM is accepted across skills and across services, enabling lateral movement with no scope boundary."
+    target_env: "all"
+    procedure:
+      - "Lab container: mint an agent NHI token with broad scope (file, network, shell) and no expiry, reflecting Microsoft Defender's guidance to treat OpenClaw as untrusted code execution with persistent credentials."
+      - "Present the same token from a second skill and from a second container in the same workspace; show it authenticates with identical privileges, proving no per-skill credential scoping."
+      - "Attempt lateral movement: use the agent identity to call a second lab service (local API or SSH endpoint) that trusts agent tokens; show the call is authorized."
+      - "Inspect rotation: show no rotation event exists in any log store and the token age far exceeds any schedule (AST09 mitigation 3 requires scoped, rotated agent credentials)."
+      - "Query the org IAM export for the agent identity and show no NHI registration exists."
+    tools: ["Docker", "OpenClaw (local lab instance)", "curl", "jq", "osquery/log queries", "Gitleaks"]
+    evidence: "The same token is accepted cross-skill and cross-service; zero rotation records; IAM export contains no NHI entry for the agent; the lateral call to the lab service succeeds under the agent identity."
+    impact: "takeover"
+    severity_hint: "Medium"
+    refs:
+      - "AST09 mitigation 3 (agentic identity controls: NHIs with scoped credentials, rotated on schedule)"
+      - "checklist.md 9.7"
+      - "index.md Feb 2026: Microsoft Defender advisory (OpenClaw should be treated as untrusted code execution with persistent credentials)"
+      - "index.md Feb 2026: Hudson Rock Vidar variants targeting openclaw.json and device.json"
+      - "index.md Feb 2026: ClawJacked CVE-2026-28363 (register new devices without user prompts)"
+    verdict: "REFERENCE"
+    utility_scores: {"A": 3, "B": 4, "C": 3, "D": 2, "E": 3}
+    rationale: "Marked REFERENCE per dedup rule: long-lived unrotated machine/service credentials enabling lateral movement is generic non-human-identity governance shared with OWASP API/LLM and mainstream IAM lifecycle guidance; the agent-specific delta is the token artifact location (openclaw.json/device.json), not the test mechanics."
+    collateral: "Dummy tokens and local-only service endpoints inside a researcher-owned container; no real IdP, cloud account, or external service accessed."

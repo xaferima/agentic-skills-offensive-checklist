@@ -1,0 +1,11 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+# ES translation scratch parts (the mirror is committed as a single file)
+checklist/.es-part*.md
+
+# internal harness — kept out of the public repo
+harness/
+progress/
+state.yaml

@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use this checklist, please cite it as below."
+title: "Agentic Skills — Offensive Pentesting Checklist"
+abstract: "Attacker-centric offensive test checklist for AI agent skills, mirroring the OWASP Agentic Skills Top 10 (AST10): 65 lab-only tests across 12 sections, with EN/ES checklists and a tracking workbook."
+type: "software"
+version: "1.0.0"
+date-released: "2026-10-21"
+license: "CC-BY-SA-4.0"
+repository-code: "https://github.com/xaferima/agentic-skills-offensive-checklist"
+url: "https://github.com/xaferima/agentic-skills-offensive-checklist"
+authors:
+  - name: "xaferima"
+    website: "https://github.com/xaferima"
+keywords:
+  - "ai-security"
+  - "agentic-ai"
+  - "owasp"
+  - "penetration-testing"
+  - "llm-security"
+  - "mcp"

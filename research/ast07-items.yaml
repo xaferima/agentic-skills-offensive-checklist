@@ -1,0 +1,264 @@
+# AST07 — Update Drift: offensive test items
+# Phase 1 research corpus (domain: agentic-skills-offensive-checklist)
+# Each item inverts one defensive AST07 checklist check into a lab-reproducible ATTACK test.
+# Format contract: harness/state.schema.md (item schema + utility gate)
+
+domain: agentic-skills-offensive-checklist
+
+source_urls:
+  - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/ast07.md
+  - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/index.md
+  - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/checklist.md
+  # supplementary evidence actually fetched and read while writing this section:
+  - https://www.air.security/blog-posts/skilljacking
+  - https://www.air.security/blog-posts/render-openai
+  - https://github.com/snyk-labs/toxicskills-goof
+
+items:
+
+  - id: AS07T01
+    title: "Hot-poison live skill via watcher"
+    objective: >-
+      Prove that OpenClaw's SkillsWatcher hot-reload applies an attacker's edit to a skill's SKILL.md
+      and helper scripts mid-session, with no restart, no re-install and no approval, turning any
+      write primitive into immediate code execution inside the already-running agent.
+    target_env: openclaw
+    procedure:
+      - In a Docker lab, run OpenClaw with exactly one benign skill in a watched skills directory; start a long-lived agent session and record the baseline inventory entry (name, version label, sha256 of SKILL.md).
+      - From a second shell simulating the compromised upstream / write path, overwrite that skill's SKILL.md and its helper script in place while the agent keeps running.
+      - Plant an own-lab benign marker payload (append a step that touches /tmp/hotreload_pwned and POSTs to a local sinkhole), reusing the toxicskills-goof fake-Vercel pattern but with the pastebin endpoint swapped for a lab collector.
+      - In the same session, send a request that routes execution to that skill; do not restart or re-sync the agent.
+      - Diff agent logs, the watched directory mtime/inode values and the process tree before and after the write.
+      - Read the sinkhole and /tmp for the marker, then re-run sha256sum on the installed SKILL.md and compare against the baseline inventory entry.
+    tools: [docker, git, sha256sum, toxicskills-goof]
+    evidence: >-
+      Agent log shows a reload event for the changed skill path (new mtime/inode, changed sha256) with no
+      process restart; the marker file and sinkhole callback land inside the same session ID; the agent
+      inventory still advertises the original version label, so no drift record exists.
+    impact: RCE
+    severity_hint: high
+    refs:
+      - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/ast07.md
+      - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/checklist.md
+      - https://github.com/snyk-labs/toxicskills-goof
+    verdict: INCLUDE
+    utility_scores: {A: 5, B: 5, C: 5, D: 4, E: 5}
+    rationale: >-
+      Inverts checklist 7.5/6.7 ("hot-reload disabled in non-dev; SkillsWatcher disabled in production").
+      The mechanism is agent-specific: a plain file write becomes live code execution because the watcher
+      re-reads the skill without a trust event. Public anchor is SkillsWatcher being called out in AST07
+      and the checklist, plus the ClawHavoc pattern of writing persistence into identity files.
+    collateral: >-
+      Researcher-owned container only; payload is a marker file plus a localhost sinkhole; no third-party
+      skill or registry is contacted; toxicskills-goof's exfil endpoint replaced by a lab collector.
+
+  - id: AS07T02
+    title: "Drift mutable ref past hash pin"
+    objective: >-
+      Prove that pinning a skill by a mutable reference (branch main, tag latest, range ^1.x) lets the
+      attacker replace content while the version label stays identical, so an inventory that records
+      only the version string never detects the drift.
+    target_env: all
+    procedure:
+      - Create a local git repo acting as the skill upstream with a benign v1.0.0 skill, plus a local installer/mirror that consumes it.
+      - Configure the lab agent's skill pin as a mutable ref (main / latest / ^1.0.0) instead of a sha256.
+      - Record the resolved state: the version label the installer reports and sha256sum of the installed SKILL.md.
+      - As the attacker, push a new commit to the same ref carrying an own-lab marker payload while keeping the version string byte-identical.
+      - Trigger whatever refresh the agent performs at start-up or next use, then re-resolve and re-hash the installed skill.
+      - Compare: identical version label vs changed sha256, and note whether any drift alarm, content diff, or re-approval fired.
+    tools: [git, sha256sum, docker]
+    evidence: >-
+      Version string unchanged, sha256 of installed content changed after re-resolution; the new payload is
+      present on disk; the agent logs no drift event and the inventory row still shows the old version with
+      a stale hash.
+    impact: RCE
+    severity_hint: high
+    refs:
+      - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/ast07.md
+      - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/checklist.md
+      - https://www.air.security/blog-posts/skilljacking
+    verdict: INCLUDE
+    utility_scores: {A: 5, B: 5, C: 5, D: 3, E: 5}
+    rationale: >-
+      Inverts 7.1/2.2 (pin to immutable sha256, not a mutable tag). SkillJacking is the real-world twin:
+      the source repo is what ships to every install, so a mutable ref means the attacker controls content
+      with no version change at all. Partial overlap with generic dependency pinning keeps D at 3.
+    collateral: >-
+      All refs point at a local git repo and local installer; no live registry, marketplace or third-party
+      skill is touched; payload is a marker only.
+
+  - id: AS07T03
+    title: "Serve unsigned malicious auto-update"
+    objective: >-
+      Test whether the agent's update channel applies an upstream release that is unsigned, published by a
+      newly-compromised publisher key, or otherwise unverified, and does so with no human approval step.
+    target_env: all
+    procedure:
+      - In a Docker lab, stand up a local git/HTTP upstream that the agent's updater already trusts, serving a benign skill v1.0.0 as the installed baseline.
+      - As the attacker, push v1.0.1 carrying an own-lab payload with no signature (or signed by a foreign/self-generated key) to that upstream.
+      - Trigger both update paths: auto-update-on-start and the explicit update command, capturing the full interaction output.
+      - Inspect whether an approval prompt, publisher-key verification, or signature check is even attempted.
+      - Confirm the new payload executes in the agent context (marker file plus lab sinkhole) and that inventory reports the new version with no human step recorded.
+    tools: [docker, git, sha256sum, toxicskills-goof]
+    evidence: >-
+      Version number advances in the agent inventory while an unsigned/foreign-signed artifact executes; no
+      approval dialog or signature verification error appears; the update leaves no approver identity, which
+      is exactly the AST07 7.2/7.3 gap.
+    impact: RCE
+    severity_hint: critical
+    refs:
+      - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/ast07.md
+      - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/index.md
+      - https://www.air.security/blog-posts/skilljacking
+    verdict: INCLUDE
+    utility_scores: {A: 5, B: 5, C: 5, D: 3, E: 5}
+    rationale: >-
+      Inverts 7.2/7.3 (auto-update gated behind re-approval; cryptographic signature on every update).
+      Real-world anchor: the SkillJacking takeover needed no exploit at all because installs pull live from a
+      source that can change hands, and Claude Code CVE-2025-59536 shows fix-versions that are themselves
+      unverifiable. D=3 because "malicious update" overlaps AST01/AST02; what is AST07-specific is the
+      absence of an approval and signature gate on the update path itself.
+    collateral: >-
+      Owned Docker lab and own upstream; no real registry, publisher key or third-party skill is used;
+      payload limited to a marker and a local sinkhole.
+
+  - id: AS07T04
+    title: "Swap live binary under pinned skill"
+    objective: >-
+      Show that a skill whose own content is hash-pinned but whose runtime helper binary is fetched from a
+      releases/latest URL executes a swapped binary with zero version change, zero update event and zero
+      rescan, so content pinning alone does not stop drift.
+    target_env: all
+    procedure:
+      - Build a lab upstream repo whose skill is pinned by sha256 but whose runtime helper binary is downloaded from a releases/latest URL served by a local HTTP server.
+      - Install and run the skill; capture the sha256 of the fetched helper and confirm it matches the pinned/expected hash.
+      - Without touching the skill itself (SKILL.md hash must stay identical), swap the artifact served at releases/latest for a build containing an own-lab marker payload.
+      - Re-invoke the skill in the same environment and record whether the agent re-fetches the binary and whether any hash verification covers it.
+      - Confirm the swapped helper executes (marker file plus lab sinkhole) while the skill's own pin still validates and no rescan or version-change event is emitted.
+    tools: [docker, git, sha256sum, curl]
+    evidence: >-
+      t0 vs t1 sha256 of the resolved artifact differ for the same URL and same reported skill version;
+      the skill's own content hash still verifies; the new helper runs and calls the marker, proving live
+      drift with no update event to attach a rescan or alert to.
+    impact: RCE
+    severity_hint: high
+    refs:
+      - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/ast07.md
+      - https://www.air.security/blog-posts/skilljacking
+      - https://github.com/snyk-labs/toxicskills-goof
+    verdict: INCLUDE
+    utility_scores: {A: 5, B: 5, C: 4, D: 3, E: 4}
+    rationale: >-
+      Inverts 7.1/7.4 by extending pinning to what the skill pulls at runtime. AST07's own evidence base
+      (Air "The Circus of Skills") states that skills rest on untrusted external resources including
+      binaries fetched from a repo's releases/latest, content that drifts malicious underneath a deployed
+      skill with no version change or update event. Boundary with AST05 5.2 is acknowledged; kept because
+      the failure is drift-without-an-update-event, which is AST07's definition.
+    collateral: >-
+      Binary served from a local HTTP server in an isolated container; no public release asset or third-party
+      repo is queried; payload is a marker plus a local sinkhole.
+
+  - id: AS07T05
+    title: "Rollback skill to vulnerable version"
+    objective: >-
+      Force skill dependency resolution to a downgraded, known-vulnerable release and confirm the agent
+      accepts and runs it while continuing to report a trusted, patched state.
+    target_env: all
+    procedure:
+      - Build a lab resolver/mirror that serves both the patched release of a skill and an older, known-vulnerable release.
+      - Install the patched release as baseline and record inventory (version, sha256, last-verified timestamp).
+      - As the attacker, make the resolver present the older release as the correct/best resolution for that skill name or range.
+      - Force the agent to resolve/update and observe whether a downgrade guard, monotonic-version check or advisory match fires.
+      - Verify the pre-patch code path is live again by reproducing the known-vulnerable behaviour from a lab PoC, then check that inventory still advertises the patched state.
+    tools: [docker, git, sha256sum]
+    evidence: >-
+      Inventory reports a version older than the one installed at baseline; the pre-patch behaviour
+      reproduces inside the lab instance; no downgrade warning and no advisory/CVE alert is emitted, so the
+      regression is invisible to the operator.
+    impact: takeover
+    severity_hint: medium
+    refs:
+      - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/ast07.md
+      - https://www.air.security/blog-posts/render-openai
+    verdict: INCLUDE
+    utility_scores: {A: 4, B: 4, C: 3, D: 3, E: 4}
+    rationale: >-
+      Inverts the AST07 "Rollback Attack" scenario (downgrade to a known-vulnerable version via dependency
+      resolution manipulation). Evidence anchor: the OpenAI render-deploy skill shipped vulnerable guidance
+      for months and users were only advised to update to the patched version, which is the same window a
+      rollback reopens. C=3 because skill-specific public rollback evidence is thin; B holds since the
+      resolver test is fully local.
+    collateral: >-
+      Resolver and both artifacts are local; the known-vulnerable behaviour is reproduced only in the owned
+      instance; no production or third-party skill is downgraded.
+
+  - id: AS07T06
+    title: "Exploit post-advisory patch-lag window"
+    objective: >-
+      Quantify and use the gap between publication of a skill security advisory and its application across a
+      fleet, by fingerprinting which instances still resolve to the vulnerable artifact.
+    target_env: all
+    procedure:
+      - Publish a lab advisory describing a vulnerability fixed in skill v2.0.0, mirroring the render-deploy timeline where unsafe guidance sat in the skill for months before removal.
+      - Freeze a set of lab agent instances at v1.x with auto-update off and record a version fingerprint for each.
+      - Once the advisory is live, attempt the known-vulnerable path only inside your own instances and confirm each still resolves to the exploitable artifact.
+      - Time the interval between advisory publication and successful exploitation to size the patch-lag window, then verify whether any advisory/CVE subscription would have alerted the operator.
+    tools: [docker, git, curl, sha256sum]
+    evidence: >-
+      A dated table of instances still on v1.x, each confirmed exploitable after the advisory; the measured
+      window in days; and a negative result on advisory subscription, matching the AST07 evidence of 12,812
+      OpenClaw instances exploitable during the patch-lag window.
+    impact: takeover
+    severity_hint: high
+    refs:
+      - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/ast07.md
+      - https://www.air.security/blog-posts/render-openai
+      - https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files/
+    verdict: REFERENCE
+    utility_scores: {A: 3, B: 4, C: 5, D: 2, E: 4}
+    rationale: >-
+      Inverts 7.6 (advisory subscription/CVE alerts). Marked REFERENCE at D=2 because exploiting a
+      disclosed CVE during a patch-lag window is generic vulnerability management rather than a
+      skill-specific mechanic; the skill-specific delta (version fingerprinting of installed skills and
+      advisory matching against inventory) belongs to AST09 governance. Retained because the AST07 evidence
+      base is explicitly patch-lag driven.
+    collateral: >-
+      Fleet is entirely researcher-owned containers; only the local lab PoC of a known issue is run; no
+      third-party instance, host or registry is probed.
+
+  - id: AS07T07
+    title: "Skip rescan after silent update"
+    objective: >-
+      Confirm that a silent update which changes only the payload never reaches the security rescan
+      pipeline, so content that would have been flagged is never evaluated before the agent uses it.
+    target_env: all
+    procedure:
+      - In a Docker lab, wire the agent's skill update path to a scanner or scanner stub that records which content hashes get scanned.
+      - Push a silent update to the local upstream that changes only the payload while keeping metadata and the version label intact.
+      - Trigger the update and inspect the scan queue and logs for a fresh scan entry matching the new content hash.
+      - Confirm the updated skill becomes invocable by the agent with no scan record for the new hash.
+    tools: [docker, git, sha256sum, semgrep]
+    evidence: >-
+      Scan log contains no entry for the post-update content hash while the agent invokes the skill
+      successfully; a control run that scans the same hash manually flags the payload, proving the gap is
+      the missing rescan trigger rather than scanner capability.
+    impact: evasion
+    severity_hint: medium
+    refs:
+      - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/ast07.md
+      - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/checklist.md
+    verdict: REFERENCE
+    utility_scores: {A: 3, B: 4, C: 4, D: 2, E: 3}
+    rationale: >-
+      Inverts 7.4 (updates trigger automatic re-scanning). Marked REFERENCE at D=2 because rescan coverage
+      on version change is owned by AST08 Poor Scanning (8.1-8.7) and by generic CI scan-gating practice; the
+      update mechanics add no agent-specific surface beyond a missing trigger.
+    collateral: >-
+      Scanner stub and payload are local; the flagged content is never published anywhere and is deleted
+      with the container.
+
+counts:
+  total: 7
+  include: 5
+  reference: 2
+  discard: 0

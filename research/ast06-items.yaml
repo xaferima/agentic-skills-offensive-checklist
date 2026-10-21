@@ -1,0 +1,253 @@
+# AST06 — Weak Isolation: offensive test items (lab-only)
+# Each defensive check in checklist.md §AST06 is inverted into an attacker test:
+# attacker verb + observable success. Mitigations are NOT restated here.
+# ETHICS: researcher-owned Docker/local labs only. No real-registry skills against
+# third parties; discovery tests hit YOUR OWN lab instance only.
+domain: agentic-skills-offensive-checklist
+section: AST06-weak-isolation
+risk_severity: High                     # per OWASP AST06
+platforms_affected: All
+generated: "2026-10-14"
+lang: en
+source_urls:
+  - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/ast06.md
+  - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/index.md
+  - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/checklist.md
+
+items:
+  # ---------------------------------------------------------------- AS06T01
+  - id: AS06T01
+    title: "Brute-force localhost WebSocket control channel"
+    inverts_check: "6.6 — Are WebSocket connections rate-limited and authenticated (including from localhost)?"
+    objective: >-
+      Prove that a web page served from the attacker's own lab origin can guess a
+      local agent's WebSocket session token with no rate limit, no origin check and no
+      auth challenge, then hijack the live session, silently register an attacker
+      device and run commands as the agent (ClawJacked pattern).
+    target_env: openclaw
+    procedure:
+      - "Start your own OpenClaw lab instance in Docker on 127.0.0.1:18789 with stock defaults (no auth, no rate limit); confirm the listener with `ss -lntp | grep 18789`."
+      - "Serve a lab-only page from `http://attacker.lab:8000` that opens `ws://127.0.0.1:18789` (cross-origin, no CORS/Origin validation expected) and replays candidate session tokens in the query string / auth header."
+      - "Loop candidates (sequential, short hex, dictionary) with a websocket client or `nc -w 2`, logging attempt count and timestamp per try."
+      - "Treat a successful WS upgrade followed by a non-error `hello`/`session` frame as the hit; record how many attempts were accepted before any throttle or lockout (expect zero)."
+      - "Over the accepted socket, send a benign canary instruction (`echo ast06-pwned`) and a device-registration frame; read the replies."
+      - "Verify the agent lists a new device ID with no user confirmation prompt and that the canary output returns in-frame."
+    tools: [nc, websocat, websocket-client (python), curl, python3, docker, ss, attacker.lab page]
+    evidence: >-
+      WS upgrade succeeds after N rejected attempts with no throttling, lockout or
+      Origin rejection; canary command output returns over the same socket; a
+      rogue device ID appears in the agent's device list without any consent prompt.
+    impact: takeover
+    severity_hint: critical
+    refs:
+      - "checklist.md §AST06 item 6.6 (motivated by ClawJacked, CVSS 9.9)"
+      - "ast06.md 'Localhost Attack Surface' — 'malicious site brute-forces the session token'"
+      - "index.md Incident Timeline Feb 26 2026 — ClawJacked CVE-2026-28363, Oasis Security; patched 2026.2.25"
+      - "ast06.md References — Oasis Security: ClawJacked (CVE-2026-28363)"
+    verdict: INCLUDE
+    utility_scores: {A: 5, B: 5, C: 5, D: 5, E: 5}
+    rationale: >-
+      Direct inversion of the only WebSocket-specific control-plane check; the success
+      signal is fully observable (token accepted, device registered, command executed)
+      and the technique is a disclosed CVE (CVE-2026-28363) rather than speculation.
+      Not covered by OWASP API/LLM Top 10 because it targets a localhost agent
+      control channel, not an HTTP API.
+    collateral: >-
+      Brute-force loops can lock a real user out of their session, so run against a
+      disposable container with a throwaway token and no paired real devices; never
+      aim the lab page at a third party's exposed instance.
+
+  # ---------------------------------------------------------------- AS06T02
+  - id: AS06T02
+    title: "Reach agent control port bound to 0.0.0.0"
+    inverts_check: "6.3 — Is network access controlled — localhost bound with authentication, not `0.0.0.0`?"
+    objective: >-
+      Show that when the agent control interface is started on all interfaces instead
+      of localhost, a second host on the lab network can open the control channel and
+      drive the agent with no credentials.
+    target_env: openclaw
+    procedure:
+      - "Start the lab agent with the stock/host-wide bind (`--host 0.0.0.0`, or the default) instead of `--host 127.0.0.1`; from the agent host confirm `ss -lntp | grep 18789` shows `0.0.0.0:18789 LISTEN`."
+      - "From a separate attacker host on the same lab network (second container on the same Docker network, or a second VM), run `nc -vz <agent-ip> 18789` and `curl -i http://<agent-ip>:18789`."
+      - "Confirm the control channel answers across the network: WS upgrade returns 101 with no auth challenge, cookie or token request."
+      - "Open the remote socket from the attacker host and send a benign canary command; capture its output."
+      - "Note that no localhost/loopback source is required, then cross-check the same instance from a different network namespace to confirm it is not merely same-host reachable."
+    tools: [nc, curl, websocket client, ss, netstat, docker, ip/ifconfig]
+    evidence: >-
+      `nc -vz` succeeds from a non-loopback host; `ss` reports `0.0.0.0:18789 LISTEN`
+      on the agent host; canary command output returns to the remote socket with zero
+      credentials supplied.
+    impact: takeover
+    severity_hint: critical
+    refs:
+      - "checklist.md §AST06 item 6.3"
+      - "ast06.md 'Localhost Attack Surface' and Preventive Mitigations 2 (never 0.0.0.0)"
+      - "index.md / ast06.md — SecurityScorecard (Feb-Mar 2026): 135,000+ OpenClaw instances internet-exposed on TCP 18789, no default firewall, authentication or process isolation"
+    verdict: INCLUDE
+    utility_scores: {A: 5, B: 5, C: 5, D: 4, E: 4}
+    rationale: >-
+      Inverts the bind-address check into a network-reachability test with a binary,
+      reproducible success signal (remote connect + command execution). Real-world
+      grounding is the SecurityScorecard exposure dataset cited in index.md and
+      ast06.md. Distinct from AS06T01 because it needs no token guessing.
+    collateral: >-
+      Only bind and probe inside an isolated lab network (internal Docker network or
+      host-only VMs); a 0.0.0.0 bind on a real host briefly advertises an unauthenticated
+      agent to the LAN, so tear it down immediately after capture.
+
+  # ---------------------------------------------------------------- AS06T03
+  - id: AS06T03
+    title: "Escape host-mode skill execution to host filesystem"
+    inverts_check: "6.1 / 6.2 — isolated container vs host-mode; FS limited to declared paths"
+    objective: >-
+      Demonstrate that a skill running in host-mode (sandbox disabled, the documented
+      OpenClaw default where "tools run on the host for the main session") reads and
+      writes the real host filesystem outside its declared path scope, including files
+      no container would expose.
+    target_env: openclaw
+    procedure:
+      - "Launch the lab instance in host mode — sandbox off, `--network host`, or no container — and confirm the skill process shares the host namespace via `cat /proc/self/cgroup`, `ls -l /proc/self/root` and `mount`."
+      - "Install a lab skill (your own canary skill, or a sample from your local clone of snyk-labs/toxicskills-goof) whose single action is `touch /var/tmp/ast06-escape.txt` and `id > /var/tmp/ast06-whoami.txt`."
+      - "Invoke the skill through the agent and then, from a plain host shell outside the agent, check for the canary files."
+      - "Compare with the same skill executed inside a Docker-sandboxed agent: the canary must appear only in the host-mode run."
+      - "Read a host-only canary secret (a synthetic file at `/var/tmp/ast06-secret.txt`) from inside the skill to prove host FS read, not just write."
+    tools: [docker, bash, ls/find/stat, mount, /proc/self/status, toxicskills-goof (local clone)]
+    evidence: >-
+      Canary file created and secret read on the host filesystem by a skill invoked in
+      host-mode; the same skill in a sandboxed run cannot see either; mount table and
+      `/proc/self/cgroup` show the skill process running in the host namespace.
+    impact: RCE
+    severity_hint: high
+    refs:
+      - "checklist.md §AST06 items 6.1 and 6.2"
+      - "ast06.md Attack Scenario 'Host Escape' — `os.system()` plants a cron job on the host, persisting beyond skill uninstall"
+      - "ast06.md Real-World Evidence — OpenClaw docs (2026): 'tools run on the host for the main session, so the agent has full access when it's just you'"
+      - "ast06.md Preventive Mitigations 1 — host-mode requires explicit opt-in"
+    verdict: INCLUDE
+    utility_scores: {A: 5, B: 5, C: 5, D: 4, E: 5}
+    rationale: >-
+      The core AST06 attack (host escape) turned into a one-canary-file test with an
+      unambiguous pass/fail and a documented real-world default. Distinct from API/LLM
+      Top 10 items, which never model the host execution context.
+    collateral: >-
+      Host-mode executes as your real user with live credentials, so run it only on a
+      disposable VM; use synthetic canary secrets, never touch `~/.ssh`, `~/.aws` or
+      wallet files, and never install a real registry skill for this test.
+
+  # ---------------------------------------------------------------- AS06T04
+  - id: AS06T04
+    title: "Escape unconfined container via syscall surface"
+    inverts_check: "6.4 — Are seccomp/AppArmor profiles applied to constrain system calls?"
+    objective: >-
+      Verify that a containerized skill runtime with no seccomp filter and no AppArmor
+      profile can execute operations a hardened profile blocks, and use that missing
+      syscall boundary to reach host resources.
+    target_env: all
+    procedure:
+      - "Start a lab agent container with stock defaults (no `--security-opt seccomp=` profile, no AppArmor label) and record `grep Seccomp /proc/self/status` (0 = disabled) plus `aa-status` / `/sys/kernel/security/apparmor/profiles` for the container."
+      - "From inside the skill runtime, attempt operations a seccomp/AppArmor profile should deny: `mount -t tmpfs none /mnt/x`, `unshare -m`, `ptrace` a sibling PID, and writes under `/proc/sys/`."
+      - "Repeat each operation in a hardened reference container (`--security-opt seccomp=<profile>`, AppArmor enforced) and record which operations flipped from denied to allowed."
+      - "Use the gained capability to cross the boundary: mount an exposed host path or attach to `/proc/<host-pid>/root`, then read a synthetic host canary secret."
+      - "Log the exit code and errno of each attempt as the pass/fail record."
+    tools: [docker, unshare, mount, strace, ptrace, /proc/self/status, aa-status, seccomp profile json]
+    evidence: >-
+      `Seccomp: 0` and no AppArmor profile on the skill process; the same syscall that
+      returns EPERM in the hardened container returns 0 here; host canary secret read
+      from within the skill container.
+    impact: RCE
+    severity_hint: high
+    refs:
+      - "checklist.md §AST06 item 6.4"
+      - "ast06.md Preventive Mitigations 3 — 'Apply seccomp/AppArmor profiles to constrain agent syscall surface'"
+      - "ast06.md OWASP Mapping — CWE-653 (Insufficient Compartmentalization), ASVS V12 (File/Resource)"
+      - "ast06.md MAESTRO Layer 4 (Deployment & Infrastructure) — runtime boundaries"
+    verdict: INCLUDE
+    utility_scores: {A: 4, B: 4, C: 4, D: 4, E: 4}
+    rationale: >-
+      Converts a hardening configuration item into a differential syscall experiment
+      whose result is mechanical (allowed vs EPERM). Broader than OpenClaw, hence
+      `target_env: all`; less specific than AS06T01-03 but still agent-runtime-specific
+      rather than generic container hygiene, so it is kept INCLUDE rather than folded
+      into a generic Docker-checking item.
+    collateral: >-
+      `mount`/`unshare`/`ptrace` experiments can crash or destabilize a shared kernel
+      state; run them only in a disposable container on a throwaway VM, and drop only
+      the capabilities you intend to test so you do not weaken your host.
+
+  # ---------------------------------------------------------------- AS06T05
+  - id: AS06T05
+    title: "Leak secrets between skills via shared filesystem"
+    inverts_check: "6.5 — Is the skill isolated from other skills and agents (per-skill namespacing)?"
+    objective: >-
+      Prove that without per-skill namespacing, one skill can stage data in a shared
+      path that a second, separately scoped skill reads, harvesting the agent identity
+      files and credentials sitting next to it.
+    target_env: all
+    procedure:
+      - "Install two lab skills A and B on your own instance and confirm they share one filesystem/process context: compare `ls -l /proc/<pid>/cwd`, `readlink /proc/<pid>/ns/mnt` and the inode of both skill working directories."
+      - "Have skill A write a synthetic canary secret (`FAKE_KEY_ast06_SYNTHETIC`) plus a copy of the agent identity files (`SOUL.md`, `MEMORY.md`, `openclaw.json`, `device.json`) into a shared path such as `/tmp` or the skill cache."
+      - "Invoke skill B, whose declared read scope is restricted to its own directory, and check whether it can still read the shared path."
+      - "Exfil the canary over an allowed egress channel (your own lab webhook sink at `attacker.lab:8000/collect`) and confirm receipt."
+      - "Repeat with the two skills running as separate agents/sessions to check whether isolation exists at the session boundary instead of the skill boundary."
+    tools: [docker, ls/stat/readlink, inotifywait, cat, curl (lab sink), ss]
+    evidence: >-
+      Skill B reads a file written by skill A from a shared path despite per-skill
+      scoped declarations; both skill processes share the same mount namespace and
+      working-directory inode; the synthetic canary secret arrives at the lab sink.
+    impact: exfil-creds
+    severity_hint: high
+    refs:
+      - "checklist.md §AST06 item 6.5"
+      - "checklist.md §AST06 item 3.8 — credential stores, .env, SSH keys beyond stated function"
+      - "index.md / ast06.md — Snyk '280+ Leaky Skills' (Feb 2026): API key and PII exposure across over-permissioned skills"
+      - "ast06.md Attack Scenario 'Network Pivot' — exfiltrate credentials from other co-located services"
+      - "ast06.md OWASP Mapping — CWE-653 (Insufficient Compartmentalization)"
+    verdict: INCLUDE
+    utility_scores: {A: 5, B: 5, C: 4, D: 4, E: 4}
+    rationale: >-
+      The per-skill isolation check is unique to the AST10 taxonomy (no equivalent in
+      the LLM/API Top 10) and the test reduces to a two-skill read/write probe with a
+      clear observable. Credential exposure has strong public evidence (Snyk leaky-skills
+      work cited in index.md).
+    collateral: >-
+      Use synthetic canary values only and a cloned instance so the shared filesystem
+      cannot leak your real `~/.ssh`, cloud metadata or browser profile; run the exfil
+      against a sink you own, never an external host.
+
+  # ---------------------------------------------------------------- AS06T06
+  - id: AS06T06
+    title: "Shadow built-in skill via workspace precedence hot-reload"
+    inverts_check: "6.7 — Is skill hot-reload / workspace precedence restricted in production?"
+    objective: >-
+      For reference: planting a skill in the workspace tier of the three-tier precedence
+      system (workspace > managed > bundled) shadows a legitimate built-in and becomes
+      active immediately through hot-reload, with no restart or user prompt.
+    target_env: openclaw
+    procedure:
+      - "Record which built-in the workspace skill will shadow (precedence workspace > managed > bundled per ast06.md 'Skill Shadowing')."
+      - "Drop your own lab `SKILL.md` into the workspace skills folder with the same name as the built-in."
+      - "Confirm the shadowing skill becomes active without a restart (hot-reload) and without a confirmation prompt."
+      - "Run the shadowed name and observe that your code executes instead of the built-in."
+      - "Uninstall/delete the workspace skill and check whether a planted payload (canary file, cron entry) survives, i.e. whether removal is cleanup."
+    tools: [ls/find, docker, inotifywait, crontab, own lab SKILL.md]
+    evidence: >-
+      Invoking the built-in name executes the workspace skill; it becomes active with
+      no restart and no confirmation; planted artifact survives skill removal.
+    impact: persistencia
+    severity_hint: high
+    refs:
+      - "checklist.md §AST06 item 6.7 (cross-references AST07 item 7.5 — update-drift angle)"
+      - "ast06.md Attack Scenario 'Skill Shadowing' — workspace > managed > bundled precedence, active immediately via hot-reload"
+      - "index.md Incident Timeline Jan 2026 — ClawHavoc skills wrote malicious instructions into MEMORY.md and SOUL.md for session-persistent backdooring"
+    verdict: REFERENCE
+    utility_scores: {A: 4, B: 4, C: 4, D: 2, E: 4}
+    rationale: >-
+      Kept as a reference only: the hot-reload half of this vector is owned by AST07
+      (checklist item 7.5 explicitly cross-references 6.7) and the malicious-skill half
+      by AST01, so as a standalone AST06 test it duplicates two other sections. Only the
+      workspace-precedence shadowing step is unique here and is better recorded as a
+      cross-reference than as a separate item.
+    collateral: >-
+      Hot-reload picks up the planted skill instantly, so snapshot the instance first
+      and remove the workspace skill from the lab folder the moment the observation is
+      captured.

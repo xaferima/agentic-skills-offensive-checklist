@@ -1,0 +1,29 @@
+name: validate-checklist
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install openpyxl
+        run: pip install --quiet openpyxl
+
+      - name: Validate (regenerate · drift · xlsx · markers · EN/ES parity)
+        run: bash scripts/ci.sh

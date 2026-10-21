@@ -1,0 +1,107 @@
+domain: agentic-skills-top10/ast10-cross-platform-reuse
+source_urls:
+  - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/ast10.md
+  - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/index.md
+  - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/universal-skill-format.md
+  - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/checklist.md
+
+items:
+  - id: AS10T01
+    title: Strip security metadata during cross-platform port
+    objective: Prove that porting one skill into the four platform formats (OpenClaw SKILL.md, Claude Code skill.json, Cursor/Codex manifest.json, VS Code package.json) silently drops the fields risk_tier, permissions, signature, content_hash, scan_status and deny_write declared in the source manifest, so the ported artifact delivers L3 destructive behaviour with no machine-readable restriction the platform can enforce.
+    target_env: all
+    procedure:
+      - Author the source manifest in Universal Skill Format v1.0 declaring risk_tier L3, shell false, network.allow [api.example.com] plus network.deny "*", deny_write [SOUL.md, MEMORY.md, AGENTS.md], an ed25519 signature, a sha256 content_hash and scan_status pass.
+      - Run a Dockerized converter that emits the four target formats by mapping only the field names each platform format actually names (SKILL.md YAML frontmatter, skill.json, manifest.json, package.json).
+      - Extract the security-field key set from every output with `yq -o=json` / `jq` and diff each target key set against the source key set.
+      - Assert field loss per target with `jq 'has("risk_tier"), has("signature"), has("content_hash"), has("scan_status")'` and record the false results.
+      - Feed each ported artifact to a stubbed runtime that honours only declared fields and execute a destructive action (a write plus a rm outside the declared write path) to confirm nothing blocks it.
+    tools: [docker, jq, yq, diff, python3, sha256sum]
+    evidence: "Per-target field-loss diff table where risk_tier / signature / content_hash / scan_status / deny_write resolve to null or false on at least one of the four targets; recorded sha256 of every ported artifact; stubbed-runtime log line showing the destructive write and rm succeeding on the target whose manifest declares no risk_tier."
+    impact: evasion
+    severity_hint: high
+    refs: ["ast10.md#security-property-loss-in-translation", "index.md#skill-formats-by-platform", "universal-skill-format.md#canonical-yaml-manifest", "checklist.md#ast10--cross-platform-reuse"]
+    verdict: include
+    utility_scores: {A: 5, B: 5, C: 5, D: 5, E: 3}
+    rationale: Inverts checklist 10.2 exactly and across the precise four platform formats listed in index.md; the port is deterministic local CLI work whose output is a machine-checkable diff, so success is observable rather than asserted; grounded in the documented AST10 property-loss scenario and in the Snyk cross-platform ToxicSkills evidence cited by ast10.md.
+    collateral: Researcher-owned Docker lab only; locally authored manifests, locally stubbed runtimes, scratch container and filesystem under /tmp/ast10-lab; no writes to any third-party registry.
+
+  - id: AS10T02
+    title: Diverge manifest parse across platform loaders
+    objective: Show that one byte-identical manifest resolves into two opposite security postures under two real platform parsers, so the attacker publishes a file that the permissive loader reads as risk_tier L0 with no deny_write while the restrictive loader reads it as L3 with identity-file write denial.
+    target_env: all
+    procedure:
+      - Craft a manifest that is legal-but-ambiguous: duplicated security keys (two risk_tier entries with different values), deny_write present only under a nested alias path that one parser follows, and permissions expressed both as an allowlist object and as a flat boolean.
+      - In Docker, parse the same bytes with two loaders — python3 with yaml.safe_load and yq -P followed by a jq round-trip — printing both resolved risk_tier and permissions.files.deny_write sets.
+      - diff the two resolved permission sets to enumerate every field the parsers disagree on.
+      - Submit the permissive parse to a governance gate that auto-approves any manifest resolving to risk_tier L0 with an empty deny_write list, and record the approval.
+      - Execute the skill against a scratch agent home and attempt writes to MEMORY.md, SOUL.md and AGENTS.md, then diff the directory before and after.
+    tools: [python3, yq, jq, diff, docker]
+    evidence: "Two loader outputs for the same sha256-identical manifest showing risk_tier L3 vs L0 and deny_write non-empty vs absent; governance gate approval log for the permissive parse; before/after diff of the scratch agent home showing MEMORY.md and SOUL.md modified where deny_write resolved to absent."
+    impact: persistencia
+    severity_hint: high
+    refs: ["ast10.md#attack-scenarios", "universal-skill-format.md#validation-requirements", "checklist.md#ast10--cross-platform-reuse"]
+    verdict: include
+    utility_scores: {A: 4, B: 5, C: 3, D: 5, E: 3}
+    rationale: Converts AST10 property-loss-in-translation into a parser-semantics attack with a concrete per-loader observable; the two-loader Docker comparison runs entirely offline and the outcome is whatever the loaders actually print, so no claim rests on a public exploit writeup, only on locally produced evidence.
+    collateral: Researcher-owned Docker lab only; locally generated skill package and scratch agent-home directory; no third-party agent, registry or identity file touched.
+
+  - id: AS10T03
+    title: Mirror skill across two registries
+    objective: Demonstrate that cross-registry incident response on one marketplace leaves the byte-identical skill installable from a second registry, because removal, quarantine verdict and scan result on registry A never propagate to registry B.
+    target_env: all
+    procedure:
+      - Stand up two researcher-owned registries in Docker: a ClawHub-style SKILL.md/package listing service and an npm-style local registry holding the ported skill.json/package.json variant.
+      - Publish one skill package to both and record the sha256 of the payload and of each manifest, plus the download counts each registry reports.
+      - Trigger the incident response on registry A — delete the artifact, revoke the listing, mark it quarantined.
+      - Re-resolve the same name and version on registry B, download it, and compare its content_hash with the value recorded at publish time.
+      - Run a local agent-skill scanner against both listings for the same hash and record the differing verdicts and timestamps.
+    tools: [docker, curl, sha256sum, jq, skillspector]
+    evidence: "Identical sha256 content_hash still downloadable from registry B after registry A purged the artifact; two time-stamped scanner verdicts of opposite outcome for the same hash; install log from registry B succeeding with registry A already quarantined."
+    impact: evasion
+    severity_hint: high
+    refs: ["ast10.md#real-world-evidence", "ast10.md#attack-scenarios", "checklist.md#ast10--cross-platform-reuse"]
+    verdict: include
+    utility_scores: {A: 5, B: 5, C: 5, D: 4, E: 3}
+    rationale: Inverts checklist 10.5 (cross-registry threat intelligence sharing) into an observable no-propagation test; fully reproducible with two local containers and hash comparison; directly mirrors the ast10.md evidence that the same actors published the same malicious skills on ClawHub and skills.sh with no shared signal.
+    collateral: Researcher-owned Docker lab only; both registries are local containers on a private bridge network with throwaway artifacts; no publication to any real marketplace and no real user traffic.
+
+  - id: AS10T04
+    title: Land skill on weakest-enforcement platform
+    objective: Show that the attacker picks the publishing target by enumerating each platform's default enforcement posture after a port, and lets the permissive target's defaults (host-mode execution, default shell and egress grants) supply the capability the source manifest explicitly denied.
+    target_env: all
+    procedure:
+      - Port one skill into all four platform formats and build a Dockerized harness that starts a stubbed runtime per platform with that platform's documented defaults.
+      - Probe each target with three capability checks: shell available without any manifest declaration, egress to an arbitrary host on a privileged port, and read outside the declared file scope.
+      - Emit the enforcement matrix as JSON and diff it across the four targets to identify the weakest.
+      - Publish the permissive-build variant under the same name, version and description as the strict-build variant so both appear to be the same skill to any inventory keyed on name and version.
+      - Execute a capability probe payload on the weakest target that calls back to a local listener in the researcher lab and log which target produced the callback.
+    tools: [docker, curl, nc, jq, yq, diff]
+    evidence: "Enforcement matrix showing which of the four targets grants shell, arbitrary egress and out-of-scope reads with no manifest field requesting it; local listener log showing the callback originating only from the weakest target; diff of the two published manifests proving identical name/version/description with divergent effective capability."
+    impact: takeover
+    severity_hint: critical
+    refs: ["checklist.md#ast10--cross-platform-reuse", "ast10.md#attack-scenarios", "index.md#quick-security-checklist"]
+    verdict: include
+    utility_scores: {A: 5, B: 5, C: 4, D: 4, E: 4}
+    rationale: Inverts checklist 10.3 (per-platform gap assessment) into an attacker-side target-selection test whose success is a local callback log; the harness is four stub runtimes in Docker, so the result is observed capability grant rather than a configuration claim; this is the AST10 cross-platform gap scenario executed end to end.
+    collateral: Researcher-owned Docker lab only; callback listener bound to 127.0.0.1 on a lab container network; stub runtimes have no real credentials, no host mounts and no production endpoints.
+
+  - id: AS10T05
+    title: Ship unsigned port, retain governance trust
+    objective: Prove that a governance record keyed on name and version can report a skill as signed and hash-pinned while the artifact actually installed on the second platform is a ported build for which no signature or content_hash field exists, so the recorded trust signal cannot be verified against what is executing.
+    target_env: all
+    procedure:
+      - Sign a source skill, record the ed25519 signature and the sha256 content_hash in the manifest, and create the governance inventory row keyed on name plus version marked as verified.
+      - Port the skill into the target format that has no reserved place for signature or content_hash (manifest.json and package.json variants) while keeping name and version identical to the signed source.
+      - Inspect every published artifact with jq for signature, content_hash and scan_status presence and record which resolve to null.
+      - Attempt verification of the installed artifact against the recorded public key and the recorded hash, and capture the non-zero exit codes.
+      - Re-query the governance inventory for the name plus version and record that it still reports the skill as signed and hash-pinned.
+    tools: [openssl, jq, sha256sum, diff, docker]
+    evidence: "jq output showing null signature and null content_hash on the ported manifest; verification commands exiting non-zero with a hash mismatch between the signed source artifact and the installed ported artifact; governance inventory row still reporting the same name plus version as signed after the port."
+    impact: evasion
+    severity_hint: high
+    refs: ["universal-skill-format.md#validation-requirements", "ast10.md#universal-skill-format-proposal", "checklist.md#ast10--cross-platform-reuse"]
+    verdict: include
+    utility_scores: {A: 5, B: 5, C: 4, D: 4, E: 3}
+    rationale: Inverts checklist 10.2 and 10.6 (properties declared consistently; universal format with signature and content_hash) by showing the trust anchor is version-named rather than artifact-named; every step is a local signing, hashing and diff operation with a binary pass/fail signal; grounded in the universal-skill-format validation requirements that production distribution carry a signature.
+    collateral: Researcher-owned Docker lab only; self-generated ed25519 keypair and throwaway skill package; no real publisher identity, registry or governance system is queried.
