@@ -20,6 +20,8 @@ source_urls:
   - https://m10x.de/posts/2026/07/pwning-ai-agents-part-3/4-read-only-bypass-and-more-vulns-in-sql-mcp-servers/
   - https://m10x.de/posts/2026/08/pwning-ai-agents-part-4/4-exploiting-mcp-hosts-with-a-malicious-mcp-server/
   - https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files/
+  - https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-critical-systemic-vulnerability-at-the-core-of-the-mcp/
+  - https://www.ox.security/blog/four-vulnerabilities-expose-a-massive-security-blind-spot-in-ide-extensions/
   - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/index.md
   - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/universal-skill-format.md
 secondary_refs_verified:
@@ -266,6 +268,8 @@ items:
     refs:
       - https://m10x.de/posts/2026/06/pwning-ai-agents-part-2/4-rce-and-data-exfiltration-in-ai-coding-agents/
       - https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files/
+      - https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-critical-systemic-vulnerability-at-the-core-of-the-mcp/
+      - https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-technical-deep-dive/
     verdict: INCLUDE
     utility_scores: {A: 5, B: 5, C: 5, D: 4, E: 5}
     rationale: >-
@@ -321,6 +325,7 @@ items:
     severity_hint: high
     refs:
       - https://m10x.de/posts/2026/06/pwning-ai-agents-part-2/4-rce-and-data-exfiltration-in-ai-coding-agents/
+      - https://www.ox.security/blog/four-vulnerabilities-expose-a-massive-security-blind-spot-in-ide-extensions/
       - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/index.md
     verdict: INCLUDE
     utility_scores: {A: 4, B: 5, C: 5, D: 4, E: 3}
@@ -444,6 +449,8 @@ items:
     severity_hint: critical
     refs:
       - https://m10x.de/posts/2026/07/pwning-ai-agents-part-3/4-read-only-bypass-and-more-vulns-in-sql-mcp-servers/
+      - https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-critical-systemic-vulnerability-at-the-core-of-the-mcp/
+      - https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-technical-deep-dive/
       - https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/universal-skill-format.md
     verdict: INCLUDE
     utility_scores: {A: 5, B: 5, C: 5, D: 4, E: 5}

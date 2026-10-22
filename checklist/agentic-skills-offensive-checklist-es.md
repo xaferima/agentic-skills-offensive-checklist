@@ -1162,7 +1162,7 @@ _Fuente: OWASP AST11 (host/IDE) · 5 ítems de prueba_
   - **Tools:** `python3 http.server`, `docker`, `jq`, `curl`, `Burp/mitmproxy`
   - **Evidence:** Línea del log de acceso del sink que contiene el contenido codificado del .env, o una consulta a Cloud Logging que devuelve las entradas "Anonymous caller does not have storage.objects.get ... Permission storage.objects.get denied" cuyos nombres de archivo llevan el secreto. Variantes exitosas confirmadas para Kiro, Sourcery, Windsurf IDE y Plugin, Codegeex, Qoder, Codeanywhere, Alibaba Lingma, IntelliJ Junie y Cline (forma básica) y Kilo Code / RooCode (bypass de CSP).
   - **Collateral:** Divulgación de credenciales y PII desde máquinas de desarrolladores hacia infraestructura del atacante; la petición de exfiltración es indistinguible de la carga de una imagen, por lo que es invisible en la mayor parte de la telemetría de endpoint y puede repetirse silenciosamente por cada archivo abierto.
-  - **Refs:** https://m10x.de/posts/2026/06/pwning-ai-agents-part-2/4-rce-and-data-exfiltration-in-ai-coding-agents/ · https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/index.md
+  - **Refs:** https://m10x.de/posts/2026/06/pwning-ai-agents-part-2/4-rce-and-data-exfiltration-in-ai-coding-agents/ · https://www.ox.security/blog/four-vulnerabilities-expose-a-massive-security-blind-spot-in-ide-extensions/ · https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/index.md
   - **Source item:** `AS11T06`
 
 ## 12. Frontera de confianza de MCP Server y herramientas
@@ -1183,7 +1183,7 @@ _Fuente: OWASP AST11 (MCP) · 3 ítems de prueba_
   - **Tools:** `docker`, `nc`, `jq`, `yq`, `git`
   - **Evidence:** Reverse shell en el listener nc mientras el IDE sigue mostrando el banner de modo seguro; el log del agente muestra el `bash -c ...` entregado por el repo ejecutándose como proceso del servidor MCP; /tmp/mcp_pwned creado para las variantes marcadoras. PoC público: Kilo Code abierto en modo seguro de JetBrains inició el servidor STDIO de todos modos y devolvió una shell.
   - **Collateral:** El checkout del repositorio se convierte en ejecución de código en cada máquina que abra el proyecto, incluidos los jobs de checkout en CI y estaciones compartidas; el banner de modo seguro tranquiliza activamente al usuario mientras la shell está viva, lo que aumenta la probabilidad de larga permanencia.
-  - **Refs:** https://m10x.de/posts/2026/06/pwning-ai-agents-part-2/4-rce-and-data-exfiltration-in-ai-coding-agents/ · https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files/
+  - **Refs:** https://m10x.de/posts/2026/06/pwning-ai-agents-part-2/4-rce-and-data-exfiltration-in-ai-coding-agents/ · https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files/ · https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-critical-systemic-vulnerability-at-the-core-of-the-mcp/ · https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-technical-deep-dive/
   - **Source item:** `AS11T05`
 
 - [ ] **12.2 Secuestrar el host MCP mediante un handshake de servidor malicioso**
@@ -1219,7 +1219,7 @@ _Fuente: OWASP AST11 (MCP) · 3 ítems de prueba_
   - **Tools:** `docker`, `nc`, `curl`, `jq`, `Burp/mitmproxy`
   - **Evidence:** Una segunda conexión directa muestra el cambio de contraseña o la tabla eliminada (estado cambiado en un servidor supuestamente de solo lectura); `cat /tmp/m10x` devuelve el contenido escrito por el atacante; el listener recibe una shell. Resultado del corpus: 14 servidores MCP SQL tenían bypass de solo lectura, 13 tenían operaciones de archivos inseguras y se confirmó RCE para Postgres. SET no apareció en ninguna de las denylists probadas. Anotar las versiones corregidas (MariaDB/mcp 0.2.4, IzumiSy 0.1.8, db-mcp-server oct 2025, hovecapital 0.2.0/0.5.0) para trazar el límite.
   - **Collateral:** Corrupción del estado de la base de datos (tablas eliminadas/alteradas, contraseñas de usuario cambiadas, DoS de sesión única) más escritura de archivos a nivel de host y RCE en el host de base de datos; un servidor MCP que corre con un rol de BD privilegiado convierte una petición de chat en acceso equivalente a root en ese host. Deben usarse contenedores solo de laboratorio porque un payload exitoso escapa de la base de datos hacia el SO.
-  - **Refs:** https://m10x.de/posts/2026/07/pwning-ai-agents-part-3/4-read-only-bypass-and-more-vulns-in-sql-mcp-servers/ · https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/universal-skill-format.md
+  - **Refs:** https://m10x.de/posts/2026/07/pwning-ai-agents-part-3/4-read-only-bypass-and-more-vulns-in-sql-mcp-servers/ · https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-critical-systemic-vulnerability-at-the-core-of-the-mcp/ · https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-technical-deep-dive/ · https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/universal-skill-format.md
   - **Source item:** `AS11T08`
 
 ---

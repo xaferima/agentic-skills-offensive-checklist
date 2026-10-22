@@ -1161,7 +1161,7 @@ _Source: OWASP AST11 (host/IDE) · 5 test items_
   - **Tools:** `python3 http.server`, `docker`, `jq`, `curl`, `Burp/mitmproxy`
   - **Evidence:** Sink access log line containing the encoded .env contents, or a Cloud Logging query returning the "Anonymous caller does not have storage.objects.get ... Permission storage.objects.get denied" entries whose filenames carry the secret. Successful variants were confirmed for Kiro, Sourcery, Windsurf IDE and Plugin, Codegeex, Qoder, Codeanywhere, Alibaba Lingma, IntelliJ Junie and Cline (basic form) and Kilo Code / RooCode (CSP bypass).
   - **Collateral:** Credential and PII disclosure from developer machines to attacker infrastructure; the exfiltration request is indistinguishable from image loading, so it is invisible in most endpoint telemetry and can repeat silently for every opened file.
-  - **Refs:** https://m10x.de/posts/2026/06/pwning-ai-agents-part-2/4-rce-and-data-exfiltration-in-ai-coding-agents/ · https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/index.md
+  - **Refs:** https://m10x.de/posts/2026/06/pwning-ai-agents-part-2/4-rce-and-data-exfiltration-in-ai-coding-agents/ · https://www.ox.security/blog/four-vulnerabilities-expose-a-massive-security-blind-spot-in-ide-extensions/ · https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/index.md
   - **Source item:** `AS11T06`
 
 ## 12. MCP Server & Tool Trust Boundary
@@ -1182,7 +1182,7 @@ _Source: OWASP AST11 (MCP) · 3 test items_
   - **Tools:** `docker`, `nc`, `jq`, `yq`, `git`
   - **Evidence:** Reverse shell on the nc listener while the IDE still shows the safe-mode banner; agent log shows the repo-shipped `bash -c ...` being executed as the MCP server process; /tmp/mcp_pwned created for the marker variants. Public PoC: Kilo Code opened in JetBrains safe mode started the STDIO server anyway and returned a shell.
   - **Collateral:** Repository checkout becomes code execution on every machine that opens the project, including CI checkout jobs and shared workstations; the safe-mode banner actively reassures the user while the shell is live, which raises the chance of long dwell time.
-  - **Refs:** https://m10x.de/posts/2026/06/pwning-ai-agents-part-2/4-rce-and-data-exfiltration-in-ai-coding-agents/ · https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files/
+  - **Refs:** https://m10x.de/posts/2026/06/pwning-ai-agents-part-2/4-rce-and-data-exfiltration-in-ai-coding-agents/ · https://research.checkpoint.com/2026/rce-and-api-token-exfiltration-through-claude-code-project-files/ · https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-critical-systemic-vulnerability-at-the-core-of-the-mcp/ · https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-technical-deep-dive/
   - **Source item:** `AS11T05`
 
 - [ ] **12.2 Hijack MCP host via malicious server handshake**
@@ -1218,7 +1218,7 @@ _Source: OWASP AST11 (MCP) · 3 test items_
   - **Tools:** `docker`, `nc`, `curl`, `jq`, `Burp/mitmproxy`
   - **Evidence:** A second direct connection shows the password change or the dropped table (state changed on a supposedly read-only server); `cat /tmp/m10x` returns the attacker-written content; the listener receives a shell. Corpus result: 14 SQL MCP servers had read-only bypass, 13 had insecure file operations, and RCE was confirmed for Postgres. SET appeared in none of the tested denylists. Note the fixed versions (MariaDB/mcp 0.2.4, IzumiSy 0.1.8, db-mcp-server Oct 2025, hovecapital 0.2.0/0.5.0) to draw the boundary.
   - **Collateral:** Database state corruption (dropped/altered tables, changed user passwords, single-session DoS) plus host-level file write and RCE on the database host; an MCP server running with a privileged DB role turns a chat request into root-equivalent access on that host. Lab-only containers must be used because a successful payload escapes the database into the OS.
-  - **Refs:** https://m10x.de/posts/2026/07/pwning-ai-agents-part-3/4-read-only-bypass-and-more-vulns-in-sql-mcp-servers/ · https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/universal-skill-format.md
+  - **Refs:** https://m10x.de/posts/2026/07/pwning-ai-agents-part-3/4-read-only-bypass-and-more-vulns-in-sql-mcp-servers/ · https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-critical-systemic-vulnerability-at-the-core-of-the-mcp/ · https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-technical-deep-dive/ · https://raw.githubusercontent.com/OWASP/www-project-agentic-skills-top-10/main/universal-skill-format.md
   - **Source item:** `AS11T08`
 
 ---
